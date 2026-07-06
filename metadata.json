@@ -1,5 +1,5 @@
 {
-  "name": "Remix Mana cinema 4.0",
+  "name": "Mana Cinema",
   "description": "A high-performance Android movie streaming platform with ExoPlayer, Firebase integration, and modern MVVM architecture for seamless cinematic experiences.",
   "requestFramePermissions": [],
   "majorCapabilities": [

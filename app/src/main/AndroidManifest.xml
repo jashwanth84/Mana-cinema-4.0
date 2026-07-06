@@ -25,12 +25,12 @@
         android:usesCleartextTraffic="true">
         
         <service 
-            android:name="com.example.downloads.DownloadService"
+            android:name="com.manacinema.app.downloads.DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync"/>
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.manacinema.app.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.MovieHunt"

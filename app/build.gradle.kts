@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example"
+    namespace = "com.manacinema.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.aistudio.moviepro.asgphu"
+        applicationId = "com.manacinema.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
