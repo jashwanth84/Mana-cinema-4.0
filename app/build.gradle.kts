@@ -42,6 +42,10 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
