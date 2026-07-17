@@ -66,6 +66,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
+import androidx.media3.ui.CaptionStyleCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Formatter
@@ -234,6 +236,12 @@ fun OTTVideoPlayer(
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
 
+    // Subtitle appearance
+    var subtitleSize by remember { mutableStateOf(1f) }
+    var subtitleColor by remember { mutableStateOf(android.graphics.Color.WHITE) }
+    var subtitleBottomPadding by remember { mutableStateOf(0.08f) }
+    var showSubtitleAppearanceDialog by remember { mutableStateOf(false) }
+
     val fallbackSources = remember {
         listOf(
             Pair("Server 1 (Google Premium CDN - Tears of Steel 1080p)", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"),
@@ -279,7 +287,7 @@ fun OTTVideoPlayer(
                 OrientationMode.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 OrientationMode.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) { android.util.Log.e("VideoPlayerView", "Error", e) }
     }
 
     // Window features full-screen layout setup
@@ -838,10 +846,35 @@ fun OTTVideoPlayer(
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         this.resizeMode = resizeMode
                         layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        
+                        subtitleView?.let { sv ->
+                            sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleSize)
+                            sv.setStyle(CaptionStyleCompat(
+                                subtitleColor,
+                                android.graphics.Color.TRANSPARENT,
+                                android.graphics.Color.TRANSPARENT,
+                                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                                android.graphics.Color.BLACK,
+                                null
+                            ))
+                            sv.setBottomPaddingFraction(subtitleBottomPadding)
+                        }
                     }
                 },
                 update = { playerView ->
                     playerView.resizeMode = resizeMode
+                    playerView.subtitleView?.let { sv ->
+                        sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleSize)
+                        sv.setStyle(CaptionStyleCompat(
+                            subtitleColor,
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT,
+                            CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                            android.graphics.Color.BLACK,
+                            null
+                        ))
+                        sv.setBottomPaddingFraction(subtitleBottomPadding)
+                    }
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -1320,7 +1353,20 @@ fun OTTVideoPlayer(
                             Icon(Icons.Default.Replay10, "Rewind 10s", tint = Color.White, modifier = Modifier.size(44.dp))
                         }
                         
-                        Spacer(modifier = Modifier.width(40.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        // Frame backward
+                        IconButton(
+                            onClick = {
+                                exoPlayer.seekTo((exoPlayer.currentPosition - 40).coerceAtLeast(0))
+                                currentPosition = exoPlayer.currentPosition
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowLeft, "Frame Backward", tint = Color.White, modifier = Modifier.size(36.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         IconButton(
                             onClick = {
@@ -1338,7 +1384,20 @@ fun OTTVideoPlayer(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(40.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        // Frame forward
+                        IconButton(
+                            onClick = {
+                                exoPlayer.seekTo((exoPlayer.currentPosition + 40).coerceAtMost(duration))
+                                currentPosition = exoPlayer.currentPosition
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowRight, "Frame Forward", tint = Color.White, modifier = Modifier.size(36.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         IconButton(
                             onClick = {
@@ -1851,6 +1910,50 @@ fun OTTVideoPlayer(
                 },
                 confirmButton = {
                     TextButton(onClick = { showTrackDialog = false }) { Text("Close") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { 
+                        showTrackDialog = false
+                        showSubtitleAppearanceDialog = true 
+                    }) { Text("Appearance") }
+                }
+            )
+        }
+
+        if (showSubtitleAppearanceDialog) {
+            AlertDialog(
+                onDismissRequest = { showSubtitleAppearanceDialog = false },
+                title = { Text("Subtitle Appearance") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column {
+                            Text("Size", fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { subtitleSize = 0.5f }) { Text("Small", color = if(subtitleSize==0.5f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleSize = 1f }) { Text("Medium", color = if(subtitleSize==1f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleSize = 1.5f }) { Text("Large", color = if(subtitleSize==1.5f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                            }
+                        }
+                        Column {
+                            Text("Color", fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { subtitleColor = android.graphics.Color.WHITE }) { Text("White", color = if(subtitleColor==android.graphics.Color.WHITE) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleColor = android.graphics.Color.YELLOW }) { Text("Yellow", color = if(subtitleColor==android.graphics.Color.YELLOW) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleColor = android.graphics.Color.GREEN }) { Text("Green", color = if(subtitleColor==android.graphics.Color.GREEN) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                            }
+                        }
+                        Column {
+                            Text("Position (Bottom Offset)", fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { subtitleBottomPadding = 0.08f }) { Text("Low", color = if(subtitleBottomPadding==0.08f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleBottomPadding = 0.15f }) { Text("Mid", color = if(subtitleBottomPadding==0.15f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                                TextButton(onClick = { subtitleBottomPadding = 0.25f }) { Text("High", color = if(subtitleBottomPadding==0.25f) Color(0xFFE50914) else MaterialTheme.colorScheme.onSurface) }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSubtitleAppearanceDialog = false }) { Text("Close") }
                 }
             )
         }
@@ -1870,7 +1973,7 @@ fun OTTVideoPlayer(
                 },
                 text = {
                     Column {
-                        val speeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f)
+                        val speeds = listOf(0.5f, 1f, 1.5f, 2f)
                         speeds.forEach { speed ->
                             TextButton(
                                 onClick = {

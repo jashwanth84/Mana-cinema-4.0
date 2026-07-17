@@ -1,4 +1,6 @@
 package com.manacinema.app.ui
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 import android.widget.Toast
 import androidx.compose.foundation.text.BasicTextField
@@ -25,6 +27,8 @@ import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -64,17 +68,16 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 enum class Screen {
-    HOME, SERIES, LIVETV, WATCHLIST, PROFILE,
+    HOME, SERIES, WATCHLIST, PROFILE,
     SEARCH, DETAIL, SERIES_DETAIL, NOTIFICATIONS,
     MOVIE_REQUEST, ACCOUNT_SETTINGS, THEME_SETTINGS,
-    DOWNLOADS, CONTINUE_WATCHING, PLAY_MOVIE, PLAY_SERIES, PLAY_LIVETV
+    DOWNLOADS, CONTINUE_WATCHING, PLAY_MOVIE, PLAY_SERIES
 }
 
 data class NavigationState(
     val screen: Screen,
     val movie: Movie? = null,
     val webSeries: WebSeries? = null,
-    val liveTvChannel: LiveTvChannel? = null,
     val selectedEpisode: Episode? = null
 )
 
@@ -280,7 +283,7 @@ fun MainAppContainer(
             // Hide bottom bar on player layouts and focus states
             val hideBottomBar = remember(currentNav.screen) {
                 listOf(
-                    Screen.PLAY_MOVIE, Screen.PLAY_SERIES, Screen.PLAY_LIVETV,
+                    Screen.PLAY_MOVIE, Screen.PLAY_SERIES,
                     Screen.SEARCH, Screen.DETAIL, Screen.SERIES_DETAIL
                 ).contains(currentNav.screen)
             }
@@ -335,12 +338,6 @@ fun MainAppContainer(
                         navigationStack.add(NavigationState(Screen.SERIES_DETAIL, webSeries = series))
                     })
 
-                    Screen.LIVETV -> LiveTvScreen(viewModel, onChannelPlay = { channel ->
-                        if (floatingVideoState?.contentId == channel.id) {
-                            viewModel.setFloatingVideo(null)
-                        }
-                        navigationStack.add(NavigationState(Screen.PLAY_LIVETV, liveTvChannel = channel))
-                    })
 
                     Screen.WATCHLIST -> WatchlistScreen(viewModel, onMovieClick = { movie ->
                         navigationStack.add(NavigationState(Screen.DETAIL, movie = movie))
@@ -485,30 +482,6 @@ fun MainAppContainer(
                         }
                     }
 
-                    Screen.PLAY_LIVETV -> state.liveTvChannel?.let { channel ->
-                        VideoPlayerView(
-                            videoUrl = channel.streamUrl,
-                            title = channel.name,
-                            onProgressUpdate = {},
-                            onBackClick = {
-                                navigationStack.removeAt(navigationStack.size - 1)
-                            },
-                            onMinimizeClick = { currentPos ->
-                                viewModel.setFloatingVideo(
-                                    MovieViewModel.FloatingVideoState(
-                                        videoUrl = channel.streamUrl,
-                                        title = channel.name,
-                                        contentId = channel.id,
-                                        poster = channel.logoUrl,
-                                        type = "livetv",
-                                        startPositionMs = currentPos
-                                    )
-                                )
-                                navigationStack.removeAt(navigationStack.size - 1)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
 
                     Screen.NOTIFICATIONS -> NotificationsScreen(viewModel, onMovieClick = { movie ->
                         navigationStack.add(NavigationState(Screen.DETAIL, movie = movie))
@@ -555,7 +528,7 @@ fun MainAppContainer(
 
             // Draggable Floating Mini-Player overlay
             if (floatingVideoState != null) {
-                val fState = floatingVideoState!!
+                val fState = floatingVideoState ?: return@Box
                 var offsetX by remember { mutableFloatStateOf(0f) }
                 var offsetY by remember { mutableFloatStateOf(0f) }
 
@@ -584,7 +557,7 @@ fun MainAppContainer(
                                         title = fState.title,
                                         poster = fState.poster,
                                         link = fState.videoUrl,
-                                        category = "", backdrop = "", rating = "", year = "", genre = "", stars = "", director = "", storyline = ""
+                                        category = "", backdrop = "", rating = "", year = "", genre = "", cast = emptyList(), isPremium = false, isNew = false, qualityBadge = "", director = "", storyline = ""
                                     )
                                     navigationStack.add(NavigationState(Screen.PLAY_MOVIE, movie = movie))
                                 } else if (fState.type == "series") {
@@ -597,9 +570,6 @@ fun MainAppContainer(
                                     val ep = Episode(season = seasonNum, episode = epNum, title = fState.title, link = fState.videoUrl)
                                     val series = WebSeries(id = seriesId, title = fState.title.substringBefore(" S"), poster = fState.poster)
                                     navigationStack.add(NavigationState(Screen.PLAY_SERIES, webSeries = series, selectedEpisode = ep))
-                                } else if (fState.type == "livetv") {
-                                    val channel = LiveTvChannel(id = fState.contentId, name = fState.title, logoUrl = fState.poster, streamUrl = fState.videoUrl, category = "")
-                                    navigationStack.add(NavigationState(Screen.PLAY_LIVETV, liveTvChannel = channel))
                                 }
                                 viewModel.setFloatingVideo(null)
                             },
@@ -685,6 +655,7 @@ fun MainAppContainer(
     }
 }
 
+@Composable fun FilterTabButton(title: String, selected: Boolean, onClick: () -> Unit) { androidx.compose.material3.TextButton(onClick=onClick) { androidx.compose.material3.Text(title, color = if(selected) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Gray) } }
 // ------------------ BOTTOM BAR DESIGN ------------------
 @Composable
 fun BottomNavigationBar(
@@ -1046,11 +1017,28 @@ fun HomeScreen(
                             ) {
                                 Box(modifier = Modifier.fillMaxSize()) {
                                     AsyncImage(
-                                        model = movie.poster,
-                                        contentDescription = movie.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                                model = movie.poster,
+                                contentDescription = movie.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
+                                if (movie.isNew) {
+                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.qualityBadge.isNotEmpty()) {
+                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.isPremium) {
+                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                                     // Soft Bottom Shade
                                     Box(
                                         modifier = Modifier
@@ -1167,6 +1155,23 @@ fun TrendingSection(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
+                                if (movie.isNew) {
+                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.qualityBadge.isNotEmpty()) {
+                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.isPremium) {
+                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                             // Elegant dark overlay gradient
                             Box(
                                 modifier = Modifier
@@ -1271,6 +1276,23 @@ fun CategoryGridRow(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
+                                if (movie.isNew) {
+                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.qualityBadge.isNotEmpty()) {
+                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (movie.isPremium) {
+                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                             // Subtle gradient overlay at the bottom half to enhance card depth
                             Box(
                                 modifier = Modifier
@@ -1567,152 +1589,6 @@ fun SeriesScreen(
             modifier = Modifier.align(Alignment.TopCenter),
             backgroundColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
-        )
-    }
-}
-
-// ------------------ LIVETV SCREEN ------------------
-@Composable
-fun LiveTvScreen(
-    viewModel: MovieViewModel,
-    onChannelPlay: (LiveTvChannel) -> Unit
-) {
-    val liveTvChannels by viewModel.liveTvChannels.collectAsState()
-    val isChannelsCategories = remember(liveTvChannels) {
-        liveTvChannels.map { it.category }.distinct().filter { it.isNotBlank() }
-    }
-    var selectedCat by remember { mutableStateOf("All") }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Live TV Channels",
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(16.dp)
-        )
-
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 12.dp)
-        ) {
-            item {
-                FilterTabButton(
-                    label = "All",
-                    selected = selectedCat == "All",
-                    onClick = { selectedCat = "All" }
-                )
-            }
-            items(isChannelsCategories) { category ->
-                FilterTabButton(
-                    label = category,
-                    selected = selectedCat == category,
-                    onClick = { selectedCat = category }
-                )
-            }
-        }
-
-        val filteredChannels = remember(liveTvChannels, selectedCat) {
-            if (selectedCat == "All") liveTvChannels else liveTvChannels.filter { it.category == selectedCat }
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(filteredChannels) { channel ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onChannelPlay(channel) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.2f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.Black.copy(alpha = 0.3f))
-                                .padding(8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AsyncImage(
-                                model = channel.logoUrl,
-                                contentDescription = channel.name,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            // LIVE BADGE
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text("LIVE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = channel.name,
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = channel.category,
-                            color = Color.Gray,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun FilterTabButton(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primary else Color(0xFF1C1C1E))
-            .border(
-                width = 1.dp,
-                color = if (selected) MaterialTheme.colorScheme.primary else Color(0xFF2C2C2E),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = label,
-            color = if (selected) Color.White else Color(0xFF8E8E93),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -2140,7 +2016,6 @@ fun iOSRowItem(
                 "Movie Request" -> Color(0xFF007AFF)
                 "Themes & Appearance" -> Color(0xFFFF2D55)
                 "Account Settings" -> Color(0xFF8E8E93)
-                "Ads Diagnostics & Test" -> Color(0xFFFF9F0A)
                 "Clear Firebase Movies", "Clear Firebase Series" -> Color(0xFFFF3B30)
                 else -> Color(0xFF8E8E93)
             }
@@ -2327,12 +2202,12 @@ fun AccountSettingsScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(start = 6.dp)) {
             FilterTabButton(
-                label = "Male",
+                title = "Male",
                 selected = selectedGender == "male",
                 onClick = { selectedGender = "male" }
             )
             FilterTabButton(
-                label = "Female",
+                title = "Female",
                 selected = selectedGender == "female",
                 onClick = { selectedGender = "female" }
             )
@@ -2573,10 +2448,30 @@ fun DetailScreen(
                 Text(movie.storyline.ifEmpty { "No description available." }, color = Color.LightGray, fontSize = 14.sp, lineHeight = 22.sp)
 
                 Spacer(modifier = Modifier.height(20.dp))
-                Text("CREW DETAILS", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Director: ${movie.director.ifEmpty { "Unknown" }}", color = Color.LightGray, fontSize = 13.sp)
-                Text("Cast stars: ${movie.stars.ifEmpty { "Unknown" }}", color = Color.LightGray, fontSize = 13.sp)
+                                if (movie.director.isNotEmpty() || movie.cast.isNotEmpty()) {
+                    Text("CREW DETAILS", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    if (movie.director.isNotEmpty()) {
+                        Text("Director: ${movie.director}", color = Color.LightGray, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    if (movie.cast.isNotEmpty()) {
+                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            items(movie.cast) { actor ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
+                                    androidx.compose.foundation.Image(
+                                        painter = coil.compose.rememberAsyncImagePainter(actor.photo),
+                                        contentDescription = actor.name,
+                                        modifier = Modifier.size(60.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.DarkGray),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(actor.name, color = Color.LightGray, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2674,7 +2569,26 @@ fun SeriesDetailScreen(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(series.storyline.ifEmpty { "No series details available." }, color = Color.LightGray, fontSize = 14.sp, lineHeight = 22.sp)
 
-                Spacer(modifier = Modifier.height(24.dp))
+                                Spacer(modifier = Modifier.height(24.dp))
+                if (series.cast.isNotEmpty()) {
+                    Text("CAST", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(series.cast) { actor ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
+                                androidx.compose.foundation.Image(
+                                    painter = coil.compose.rememberAsyncImagePainter(actor.photo),
+                                    contentDescription = actor.name,
+                                    modifier = Modifier.size(60.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.DarkGray),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(actor.name, color = Color.LightGray, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
                 Text("EPISODES LISTING", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -3029,7 +2943,7 @@ fun DownloadsScreen(
                                         title = download.title,
                                         poster = download.poster,
                                         link = download.localUri,
-                                        category = "", backdrop = "", rating = "", year = "", genre = "", stars = "", director = "", storyline = ""
+                                        category = "", backdrop = "", rating = "", year = "", genre = "", cast = emptyList(), isPremium = false, isNew = false, qualityBadge = "", director = "", storyline = ""
                                     )
                                     onPlayDownloaded(movie)
                                 }
@@ -3601,7 +3515,7 @@ fun ProfileSelectionScreen(
                     if (editingProfile != null) {
                         IconButton(
                             onClick = {
-                                viewModel.deleteProfile(editingProfile!!.id)
+                                editingProfile?.let { viewModel.deleteProfile(it.id) }
                                 showAddDialog = false
                                 isEditMode = false
                             },
@@ -3644,349 +3558,3 @@ fun ProfileSelectionScreen(
     }
 }
 
-// ------------------ ADS DIAGNOSTICS & TEST SCREEN ------------------
-@Composable
-fun AdsDiagnosticsScreen(
-    viewModel: MovieViewModel,
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-    val activity = context as? android.app.Activity
-
-    // Local states for custom config input fields
-    var gameIdInput by remember { mutableStateOf("dummy_game_id") }
-    var placementInput by remember { mutableStateOf("dummy_placement") }
-    var testModeInput by remember { mutableStateOf(true) }
-
-    // Live diagnostics states refreshed periodically or on action
-    var isInitializedState by remember { mutableStateOf(false) }
-    var isAdLoadedState by remember { mutableStateOf(false) }
-    var initErrorState by remember { mutableStateOf<String?>(null) }
-    var loadErrorState by remember { mutableStateOf<String?>(null) }
-    var showErrorState by remember { mutableStateOf<String?>(null) }
-
-    // Periodic check to keep UI reactive
-    LaunchedEffect(Unit) {
-        while (true) {
-            isInitializedState = false
-            isAdLoadedState = false
-            initErrorState = null
-            loadErrorState = null
-            showErrorState = null
-            delay(1000)
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0F0F14))
-            .statusBarsPadding()
-    ) {
-        // Toolbar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-            }
-            Text(
-                text = "Ads Diagnostics & Test",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Section 1: Connection Status Cards
-            item {
-                Text(
-                    text = "STATUS DIAGNOSTICS",
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-                    border = BorderStroke(0.5.dp, Color(0xFF2C2C2E))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        // SDK Initialization Status
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("SDK Initialization", color = Color.White, fontSize = 15.sp)
-                            StatusBadge(isActive = isInitializedState, activeText = "Initialized", inactiveText = "Uninitialized")
-                        }
-                        
-                        if (initErrorState != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Init Error: $initErrorState",
-                                color = Color(0xFFFF453A),
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(4.dp)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(0.5.dp)
-                                .background(Color(0xFF2C2C2E))
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Ad Loaded Status
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Ad Buffering/Available", color = Color.White, fontSize = 15.sp)
-                            StatusBadge(isActive = isAdLoadedState, activeText = "Ad Buffer Loaded", inactiveText = "No Ad Cached")
-                        }
-                        
-                        if (loadErrorState != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Load Error: $loadErrorState",
-                                color = Color(0xFFFF9F0A),
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(4.dp)
-                            )
-                        }
-
-                        if (showErrorState != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Last Show Failure: $showErrorState",
-                                color = Color(0xFFFF453A),
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(4.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Section 2: Interactive Ad Tests
-            item {
-                Text(
-                    text = "INTERACTIVE AD TESTS",
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-                    border = BorderStroke(0.5.dp, Color(0xFF2C2C2E))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "SDK Initialization Success! (Offline Simulation)", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Text("Force SDK Re-Initialization", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "Ad fetching triggered successfully! (Offline Simulation)", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5856D6)),
-                            enabled = true
-                        ) {
-                            Text("Trigger Custom Ad Pre-Fetch", color = Color.White)
-                        }
-
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "Ad completion callback completed! Integration fully verified ✅ (Offline Simulation)", Toast.LENGTH_LONG).show()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
-                        ) {
-                            Text("Play Rewarding Video Ad Test", color = Color.White)
-                        }
-                    }
-                }
-            }
-
-            // Section 3: Custom Unity Ads Engine Configuration
-            item {
-                Text(
-                    text = "ENGINE CONFIGURATION",
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-                    border = BorderStroke(0.5.dp, Color(0xFF2C2C2E))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        // Unity Game ID input
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Unity Game ID", color = Color.Gray, fontSize = 13.sp)
-                            OutlinedTextField(
-                                value = gameIdInput,
-                                onValueChange = { gameIdInput = it },
-                                textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = Color(0xFF2C2C2E),
-                                    focusedContainerColor = Color(0xFF0F0F14),
-                                    unfocusedContainerColor = Color(0xFF0F0F14)
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        }
-
-                        // Unity Reward Placement Code input
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Rewarded Placement Code", color = Color.Gray, fontSize = 13.sp)
-                            OutlinedTextField(
-                                value = placementInput,
-                                onValueChange = { placementInput = it },
-                                textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = Color(0xFF2C2C2E),
-                                    focusedContainerColor = Color(0xFF0F0F14),
-                                    unfocusedContainerColor = Color(0xFF0F0F14)
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        }
-
-                        // SDK Test Mode Checkbox Toggle
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Unity SDK Test Mode", color = Color.White, fontSize = 15.sp)
-                                Text(
-                                    "Turn ON test ads to ensure easy ad completion and bypass Google Play publication constraints.",
-                                    color = Color.Gray,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Switch(
-                                checked = testModeInput,
-                                onCheckedChange = { testModeInput = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Save Configuration button
-                        Button(
-                            onClick = {
-                                if (gameIdInput.isBlank() || placementInput.isBlank()) {
-                                    Toast.makeText(context, "Game ID and Placement cannot be blank!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Engine configuration updated & initialized! ⚙️ (Offline Simulation)", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Text("Assign & Apply Configuration", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-            
-            // Section 4: General diagnostic recommendations
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2C2C2E).copy(alpha = 0.3f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "💡 Diagnostics Guidance",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "1. To test offline or in virtual environments, make sure Test Mode is ENABLED.\n" +
-                                   "2. If initialization fails, please verify your internet connection.\n" +
-                                   "3. Ad buffering requires a few seconds after initialization completes. Click 'Trigger Custom Ad Pre-Fetch' to check status. if it succeeds, click 'Play Rewarding Video Ad Test' to view the full video test frame.\n" +
-                                   "4. When showing ads, if a load error of 'NO_FILL' occurs, it means Unity currently has no available ads for your mock traffic; dynamic test ads are served securely to prevent blocking your flows.",
-                            color = Color.LightGray,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusBadge(isActive: Boolean, activeText: String, inactiveText: String) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = if (isActive) Color(0xFF34C759).copy(alpha = 0.15f) else Color(0xFFFF453A).copy(alpha = 0.15f),
-                shape = RoundedCornerShape(4.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = if (isActive) activeText else inactiveText,
-            color = if (isActive) Color(0xFF34C759) else Color(0xFFFF453A),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}

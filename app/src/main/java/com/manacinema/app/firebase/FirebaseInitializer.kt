@@ -9,7 +9,7 @@ object FirebaseInitializer {
         try {
             if (FirebaseApp.getApps(context).isEmpty()) {
                 val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyAOVmYYxvvxGKl-koWzx7ldYJDaIPM3TR4")
+                    .setApiKey(com.manacinema.app.BuildConfig.FIREBASE_API_KEY)
                     .setApplicationId("1:313100918753:web:2c60c2ca8abb63e6cebca0")
                     .setDatabaseUrl("https://infinity-earning-app-default-rtdb.asia-southeast1.firebasedatabase.app")
                     .setProjectId("infinity-earning-app")

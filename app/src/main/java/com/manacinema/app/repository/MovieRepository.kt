@@ -286,7 +286,10 @@ class MovieRepository(context: Context) {
                 year = it.year,
                 genre = it.genre,
                 link = it.link,
-                stars = it.stars,
+                castJson = "",
+                        isPremium = it.isPremium,
+                        isNew = it.isNew,
+                        qualityBadge = it.qualityBadge,
                 director = it.director,
                 storyline = it.storyline
             )
@@ -316,6 +319,10 @@ class MovieRepository(context: Context) {
                 year = s.year,
                 genre = s.genre,
                 storyline = s.storyline,
+                castJson = "",
+                isPremium = s.isPremium,
+                isNew = s.isNew,
+                qualityBadge = s.qualityBadge,
                 episodesJson = arr.toString()
             )
         }
@@ -339,12 +346,41 @@ class MovieRepository(context: Context) {
                     val list = mutableListOf<Movie>()
                     for (child in snapshot.children) {
                         try {
-                            val movie = child.getValue(Movie::class.java)
-                            if (movie != null) {
-                                // Ensure id is populated if empty from RTDB key
-                                val finalMovie = if (movie.id.isEmpty()) movie.copy(id = child.key ?: "") else movie
-                                list.add(finalMovie)
+                                                        val id = child.child("id").getValue(String::class.java) ?: child.key ?: ""
+                            val title = child.child("title").getValue(String::class.java) ?: ""
+                            val poster = child.child("poster").getValue(String::class.java) ?: ""
+                            val backdrop = child.child("backdrop").getValue(String::class.java) ?: ""
+                            val category = child.child("category").getValue(String::class.java) ?: ""
+                            val rating = child.child("rating").getValue(String::class.java) ?: ""
+                            val year = child.child("year").getValue(String::class.java) ?: ""
+                            val genre = child.child("genre").getValue(String::class.java) ?: ""
+                            val link = child.child("link").getValue(String::class.java) ?: ""
+                            val director = child.child("director").getValue(String::class.java) ?: ""
+                            val storyline = child.child("storyline").getValue(String::class.java) ?: ""
+                            val isPremium = child.child("isPremium").getValue(Boolean::class.java) ?: false
+                            val isNew = child.child("isNew").getValue(Boolean::class.java) ?: false
+                            val qualityBadge = child.child("qualityBadge").getValue(String::class.java) ?: ""
+
+                            val castList = mutableListOf<com.manacinema.app.models.CastMember>()
+                            val castSnap = child.child("cast")
+                            if (castSnap.exists()) {
+                                for (c in castSnap.children) {
+                                    try {
+                                        val cName = c.child("name").getValue(String::class.java) ?: ""
+                                        val cPhoto = c.child("photo").getValue(String::class.java) ?: ""
+                                        castList.add(com.manacinema.app.models.CastMember(cName, cPhoto))
+                                    } catch (e: Exception) {}
+                                }
                             }
+
+                            val finalMovie = com.manacinema.app.models.Movie(
+                                id = id, title = title, poster = poster, backdrop = backdrop,
+                                category = category, rating = rating, year = year, genre = genre,
+                                link = link, director = director, storyline = storyline,
+                                isPremium = isPremium, isNew = isNew, qualityBadge = qualityBadge,
+                                cast = castList
+                            )
+                            list.add(finalMovie)
                         } catch(e: Exception) {
                             android.util.Log.e("MovieRepository", "Error parsing movie", e)
                         }
@@ -385,6 +421,21 @@ class MovieRepository(context: Context) {
                             val year = child.child("year").getValue(String::class.java) ?: ""
                             val genre = child.child("genre").getValue(String::class.java) ?: ""
                             val storyline = child.child("storyline").getValue(String::class.java) ?: ""
+                            val isPremium = child.child("isPremium").getValue(Boolean::class.java) ?: false
+                            val isNew = child.child("isNew").getValue(Boolean::class.java) ?: false
+                            val qualityBadge = child.child("qualityBadge").getValue(String::class.java) ?: ""
+
+                            val castList = mutableListOf<com.manacinema.app.models.CastMember>()
+                            val castSnap = child.child("cast")
+                            if (castSnap.exists()) {
+                                for (c in castSnap.children) {
+                                    try {
+                                        val cName = c.child("name").getValue(String::class.java) ?: ""
+                                        val cPhoto = c.child("photo").getValue(String::class.java) ?: ""
+                                        castList.add(com.manacinema.app.models.CastMember(cName, cPhoto))
+                                    } catch (e: Exception) {}
+                                }
+                            }
 
                             val episodes = mutableListOf<Episode>()
                             val epSnapshot = child.child("episodes")
@@ -450,49 +501,6 @@ class MovieRepository(context: Context) {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    fun getLiveTvChannelsFromFirebase(): Flow<List<LiveTvChannel>> = callbackFlow {
-        val db = dbInstance
-        if (db == null) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
-        val ref = db.getReference("channels")
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
-                    val list = mutableListOf<LiveTvChannel>()
-                    for (child in snapshot.children) {
-                        try {
-                            val id = child.child("id").getValue(String::class.java) ?: child.key ?: ""
-                            val name = child.child("name").getValue(String::class.java) ?: ""
-                            val logoUrl = child.child("logoUrl").getValue(String::class.java) ?: ""
-                            val streamUrl = child.child("streamUrl").getValue(String::class.java) ?: ""
-                            val category = child.child("category").getValue(String::class.java) ?: ""
-                            list.add(
-                                LiveTvChannel(
-                                    id = id,
-                                    name = name,
-                                    logoUrl = logoUrl,
-                                    streamUrl = streamUrl,
-                                    category = category
-                                )
-                            )
-                        } catch (e: Exception) {
-                            android.util.Log.e("MovieRepository", "Error parsing TV channel safely", e)
-                        }
-                    }
-                    trySend(list)
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
-            }
-        }
-        ref.addValueEventListener(listener)
-        awaitClose { ref.removeEventListener(listener) }
-    }
 
     fun getSystemMaintenance(): Flow<Pair<Boolean, String>> = callbackFlow {
         val db = dbInstance
@@ -552,13 +560,13 @@ class MovieRepository(context: Context) {
             return
         }
         try {
-            val ref = db.getReference("requests").push()
+            val ref = db.getReference("movie_requests").push()
             val key = ref.key ?: ""
             val req = MovieRequest(
                 id = key,
-                title = movieName,
-                year = year,
-                userEmail = userEmail,
+                movieName = movieName,
+                movieYear = year,
+                requestedBy = userEmail,
                 timestamp = System.currentTimeMillis()
             )
             ref.setValue(req).addOnCompleteListener { task ->

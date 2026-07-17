@@ -39,8 +39,6 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
     private val _webSeries = MutableStateFlow<List<WebSeries>>(emptyList())
     val webSeries: StateFlow<List<WebSeries>> = _webSeries.asStateFlow()
 
-    private val _liveTvChannels = MutableStateFlow<List<LiveTvChannel>>(emptyList())
-    val liveTvChannels: StateFlow<List<LiveTvChannel>> = _liveTvChannels.asStateFlow()
 
     private val _categories = MutableStateFlow<List<String>>(emptyList())
     val categories: StateFlow<List<String>> = _categories.asStateFlow()
@@ -64,7 +62,7 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
     private val _profiles = MutableStateFlow<List<MovieProfile>>(emptyList())
     val profiles: StateFlow<List<MovieProfile>> = _profiles.asStateFlow()
 
-    val recommendedMovies: StateFlow<List<Movie>> = combine(movies, _activeProfile) { movieList, profile ->
+    val recommendedMovies: StateFlow<List<Movie>> = combine(movies, _activeProfile) { movieList: List<com.manacinema.app.models.Movie>, profile: com.manacinema.app.models.MovieProfile? ->
         if (profile == null) return@combine movieList
         var filtered = movieList
         if (profile.isKids) {
@@ -79,6 +77,9 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
         }
         filtered.take(12)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _isBanned = MutableStateFlow(false)
+    val isBanned: StateFlow<Boolean> = _isBanned
 
     private val _isGuestUser = MutableStateFlow(false)
     val isGuestUser: StateFlow<Boolean> = _isGuestUser.asStateFlow()
@@ -137,15 +138,7 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
                     }
             }
             
-            launch {
-                repository.getLiveTvChannelsFromFirebase()
-                    .catch { android.util.Log.e("MovieViewModel", "Refresh channels failed", it) }
-                    .take(1)
-                    .collect { list ->
-                        _liveTvChannels.value = list
-                    }
-            }
-        }
+    }
     }
 
     // Removed fake data list defaultMovies
@@ -199,7 +192,7 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
                                 year = it.year,
                                 genre = it.genre,
                                 link = it.link,
-                                stars = it.stars,
+                                cast = emptyList(), isPremium = it.isPremium, isNew = it.isNew, qualityBadge = it.qualityBadge,
                                 director = it.director,
                                 storyline = it.storyline
                             )
@@ -345,16 +338,6 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
                     }
             }
 
-            launch {
-                repository.getLiveTvChannelsFromFirebase()
-                    .catch { e ->
-                        android.util.Log.e("MovieViewModel", "Channels Firebase fetch failed", e)
-                        emit(emptyList())
-                    }
-                    .collect { list ->
-                        _liveTvChannels.value = list
-                    }
-            }
 
             launch {
                 repository.getNotifications()

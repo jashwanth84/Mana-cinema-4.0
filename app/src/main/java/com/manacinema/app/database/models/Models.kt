@@ -1,5 +1,7 @@
 package com.manacinema.app.models
 
+data class CastMember(val name: String = "", val photo: String = "")
+
 data class Movie(
     val id: String = "",
     val title: String = "",
@@ -10,7 +12,10 @@ data class Movie(
     val year: String = "",
     val genre: String = "",
     val link: String = "",
-    val stars: String = "",
+    val cast: List<CastMember> = emptyList(),
+    val isPremium: Boolean = false,
+    val isNew: Boolean = false,
+    val qualityBadge: String = "",
     val director: String = "",
     val storyline: String = ""
 )
@@ -32,16 +37,13 @@ data class WebSeries(
     val year: String = "",
     val genre: String = "",
     val storyline: String = "",
+    val cast: List<CastMember> = emptyList(),
+    val isPremium: Boolean = false,
+    val isNew: Boolean = false,
+    val qualityBadge: String = "",
     val episodes: List<Episode> = emptyList()
 )
 
-data class LiveTvChannel(
-    val id: String = "",
-    val name: String = "",
-    val logoUrl: String = "",
-    val streamUrl: String = "",
-    val category: String = ""
-)
 
 data class UserProfile(
     val uid: String = "",
@@ -70,9 +72,9 @@ data class ContinueWatching(
 
 data class MovieRequest(
     val id: String = "",
-    val title: String = "",
-    val year: Int = 0,
-    val userEmail: String = "",
+    val movieName: String = "",
+    val movieYear: Int = 0,
+    val requestedBy: String = "",
     val timestamp: Long = 0L
 )
 

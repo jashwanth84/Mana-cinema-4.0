@@ -145,7 +145,7 @@ class DownloadService : Service() {
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     totalBytes = if (connection.contentLengthLong != -1L) connection.contentLengthLong else 0L
                 }
-                connection.disconnect()
+                connection?.disconnect()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -163,7 +163,7 @@ class DownloadService : Service() {
                     if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                         totalBytes = if (connection.contentLengthLong != -1L) connection.contentLengthLong else 0L
                     }
-                    connection.disconnect()
+                    connection?.disconnect()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -207,9 +207,9 @@ class DownloadService : Service() {
             }
 
             val remoteTotal = if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
-                downloadedBytes + connection!!.contentLengthLong
+                downloadedBytes + (connection?.contentLengthLong ?: 0L)
             } else {
-                connection!!.contentLengthLong
+                (connection?.contentLengthLong ?: 0L)
             }
 
             if (remoteTotal > 0 && downloadedBytes == remoteTotal) {
@@ -223,7 +223,7 @@ class DownloadService : Service() {
                 )
                 appDatabase.appDao().insertOrUpdateDownload(currentEntity)
                 updateNotification(currentEntity.title, 100, "Download Complete")
-                connection.disconnect()
+                connection?.disconnect()
                 return@withContext
             }
 
@@ -241,7 +241,7 @@ class DownloadService : Service() {
             val randomAccessFile = RandomAccessFile(targetFile, "rw")
             randomAccessFile.seek(downloadedBytes)
 
-            val inputStream: InputStream = connection!!.inputStream
+            val inputStream: InputStream = connection?.inputStream ?: return@withContext
             val buffer = ByteArray(8192)
             var bytesRead: Int
 
@@ -269,7 +269,7 @@ class DownloadService : Service() {
             }
             randomAccessFile.close()
             inputStream.close()
-            connection.disconnect()
+            connection?.disconnect()
 
             if (isActive && downloadedBytes >= remoteTotal && remoteTotal > 0) {
                 currentEntity = currentEntity.copy(

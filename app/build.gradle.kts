@@ -19,6 +19,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        val firebaseApiKey = project.findProperty("FIREBASE_API_KEY") as? String ?: "AIzaSyAOVmYYxvvxGKl-koWzx7ldYJDaIPM3TR4"
+        buildConfigField("String", "FIREBASE_API_KEY", "\"" + firebaseApiKey + "\"")
     }
 
     buildTypes {
@@ -91,7 +93,6 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore:24.10.3")
 
     // Unity Ads Integration
-    implementation("com.unity3d.ads:unity-ads:4.12.1")
 
     // Test libs
     testImplementation("junit:junit:4.13.2")

@@ -14,7 +14,10 @@ data class CachedMovieEntity(
     val year: String,
     val genre: String,
     val link: String,
-    val stars: String,
+    val castJson: String,
+    val isPremium: Boolean,
+    val isNew: Boolean,
+    val qualityBadge: String,
     val director: String,
     val storyline: String
 )
@@ -30,6 +33,10 @@ data class CachedSeriesEntity(
     val year: String,
     val genre: String,
     val storyline: String,
+    val castJson: String,
+    val isPremium: Boolean,
+    val isNew: Boolean,
+    val qualityBadge: String,
     val episodesJson: String // Serialized list of episodes as JSON for simple local database storage
 )
 

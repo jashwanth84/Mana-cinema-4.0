@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
         }
         val builder = android.net.NetworkRequest.Builder()
             .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        cm.registerNetworkCallback(builder.build(), networkCallback!!)
+        networkCallback?.let { cm.registerNetworkCallback(builder.build(), it) }
 
         super.onCreate(savedInstanceState)
 
@@ -158,7 +158,17 @@ class MainActivity : ComponentActivity() {
                         // Also check Guest state
                         val isGuestUser by viewModel.isGuestUser.collectAsState()
 
-                        if (isAuthenticated || isGuestUser) {
+                        val isBanned by viewModel.isBanned.collectAsState()
+                        if (isBanned) {
+                            androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                    
+                                    
+                                    androidx.compose.foundation.layout.Spacer(modifier = androidx.compose.ui.Modifier.height(16.dp))
+                                    androidx.compose.material3.Text("Your account has been suspended", color = Color.White, fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                }
+                            }
+                        } else if (isAuthenticated || isGuestUser) {
                             MainAppContainer(
                                 viewModel = viewModel,
                                 onLogout = {
