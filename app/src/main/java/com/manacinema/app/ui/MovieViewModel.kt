@@ -400,8 +400,19 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
                     createdAt = System.currentTimeMillis()
                 )
             } else {
-                _isGuestUser.value = false
-                _currentUserProfile.value = null
+                _isGuestUser.value = true
+                val displayName = sharedPrefs.getString("user_name_guest_user", "Guest User") ?: "Guest"
+                val photoUrl = sharedPrefs.getString("user_photo_guest_user", "https://i.ibb.co/yBNK21P/avatar1.jpg") ?: "https://i.ibb.co/yBNK21P/avatar1.jpg"
+                val gender = sharedPrefs.getString("user_gender_guest_user", "male") ?: "male"
+
+                _currentUserProfile.value = UserProfile(
+                    uid = "guest_user",
+                    displayName = displayName,
+                    email = "guest@manacinema.com",
+                    photoURL = photoUrl,
+                    gender = gender,
+                    createdAt = System.currentTimeMillis()
+                )
             }
         } catch (e: Exception) {
             android.util.Log.e("MovieViewModel", "Error in observeUserSession - falling back to Guest default", e)

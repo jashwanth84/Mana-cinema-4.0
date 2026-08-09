@@ -18,7 +18,7 @@ class MovieRepository(context: Context) {
 
     private val dbInstance: FirebaseDatabase? by lazy {
         try {
-            FirebaseDatabase.getInstance("https://infinity-earning-app-default-rtdb.asia-southeast1.firebasedatabase.app")
+            FirebaseDatabase.getInstance("https://manacinema-3192f-default-rtdb.asia-southeast1.firebasedatabase.app")
         } catch (e: Exception) {
             android.util.Log.e("MovieRepository", "FirebaseDatabase initialization failed", e)
             null
@@ -106,7 +106,8 @@ class MovieRepository(context: Context) {
 
     fun getProfilesFromFirestore(uid: String): Flow<List<MovieProfile>> = callbackFlow {
         val fs = firestoreInstance
-        if (fs == null || uid.isEmpty() || uid == "guest_user") {
+        val currentUser = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (e: Exception) { null }
+        if (fs == null || uid.isEmpty() || uid == "guest_user" || currentUser == null) {
             trySend(emptyList())
             close()
             return@callbackFlow
@@ -114,7 +115,7 @@ class MovieRepository(context: Context) {
         val ref = fs.collection("users").document(uid).collection("profiles")
         val registration = ref.addSnapshotListener { snapshot, error ->
             if (error != null) {
-                android.util.Log.e("MovieRepository", "Error getting profiles", error)
+                android.util.Log.w("MovieRepository", "Profiles Firestore fetch info: ${error.message}")
                 trySend(emptyList())
                 return@addSnapshotListener
             }
@@ -142,7 +143,8 @@ class MovieRepository(context: Context) {
 
     fun saveProfileToFirestore(uid: String, profile: MovieProfile) {
         val fs = firestoreInstance ?: return
-        if (uid.isEmpty() || uid == "guest_user") return
+        val currentUser = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (e: Exception) { null }
+        if (uid.isEmpty() || uid == "guest_user" || currentUser == null) return
         val map = mapOf(
             "id" to profile.id,
             "name" to profile.name,
@@ -153,17 +155,18 @@ class MovieRepository(context: Context) {
         fs.collection("users").document(uid).collection("profiles").document(profile.id)
             .set(map)
             .addOnFailureListener { e ->
-                android.util.Log.e("MovieRepository", "Firestore save profile failed", e)
+                android.util.Log.w("MovieRepository", "Firestore save profile info: ${e.message}")
             }
     }
 
     fun deleteProfileFromFirestore(uid: String, profileId: String) {
         val fs = firestoreInstance ?: return
-        if (uid.isEmpty() || uid == "guest_user") return
+        val currentUser = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (e: Exception) { null }
+        if (uid.isEmpty() || uid == "guest_user" || currentUser == null) return
         fs.collection("users").document(uid).collection("profiles").document(profileId)
             .delete()
             .addOnFailureListener { e ->
-                android.util.Log.e("MovieRepository", "Firestore delete profile failed", e)
+                android.util.Log.w("MovieRepository", "Firestore delete profile info: ${e.message}")
             }
     }
 
@@ -390,7 +393,9 @@ class MovieRepository(context: Context) {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
+                android.util.Log.w("MovieRepository", "Movies fetch cancelled: ${error.message}")
+                trySend(emptyList())
+                close()
             }
         }
         ref.addValueEventListener(listener)
@@ -494,7 +499,9 @@ class MovieRepository(context: Context) {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
+                android.util.Log.w("MovieRepository", "WebSeries fetch cancelled: ${error.message}")
+                trySend(emptyList())
+                close()
             }
         }
         ref.addValueEventListener(listener)
@@ -546,7 +553,9 @@ class MovieRepository(context: Context) {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
+                android.util.Log.w("MovieRepository", "Notifications fetch cancelled: ${error.message}")
+                trySend(emptyList())
+                close()
             }
         }
         ref.addValueEventListener(listener)

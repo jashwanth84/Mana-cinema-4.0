@@ -2,15 +2,15 @@ package com.manacinema.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Core Slate Dark Gradients
-val CosmicSlateDarkBg = Color(0xFF09090C)
-val CosmicSlateSurface = Color(0xFF121218)
-val CosmicSlateSurfaceVariant = Color(0xFF1E1E26)
-val GrayBorder = Color(0xFF2C2C35)
+// Core Netflix Dark Colors
+val CosmicSlateDarkBg = Color(0xFF0B0B0F)
+val CosmicSlateSurface = Color(0xFF14141C)
+val CosmicSlateSurfaceVariant = Color(0xFF1F1F2A)
+val GrayBorder = Color(0xFF2B2B38)
 
-// 1. Classic Red Theme Colors
-val RubyRedPrimary = Color(0xFFFF1E3E)
-val RubyRedSecondary = Color(0xFFFF4B66)
+// 1. Netflix Red Theme Colors
+val RubyRedPrimary = Color(0xFFE50914)
+val RubyRedSecondary = Color(0xFFF44336)
 
 // 2. Ocean Blue Theme Colors
 val OceanBluePrimary = Color(0xFF00A2D3)

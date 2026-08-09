@@ -10,11 +10,11 @@ object FirebaseInitializer {
             if (FirebaseApp.getApps(context).isEmpty()) {
                 val options = FirebaseOptions.Builder()
                     .setApiKey(com.manacinema.app.BuildConfig.FIREBASE_API_KEY)
-                    .setApplicationId("1:313100918753:web:2c60c2ca8abb63e6cebca0")
-                    .setDatabaseUrl("https://infinity-earning-app-default-rtdb.asia-southeast1.firebasedatabase.app")
-                    .setProjectId("infinity-earning-app")
-                    .setStorageBucket("infinity-earning-app.firebasestorage.app")
-                    .setGcmSenderId("313100918753")
+                    .setApplicationId("1:883004315598:android:37b044a9b001928afabd9f")
+                    .setDatabaseUrl("https://manacinema-3192f-default-rtdb.asia-southeast1.firebasedatabase.app")
+                    .setProjectId("manacinema-3192f")
+                    .setStorageBucket("manacinema-3192f.firebasestorage.app")
+                    .setGcmSenderId("883004315598")
                     .build()
                 FirebaseApp.initializeApp(context, options)
             }

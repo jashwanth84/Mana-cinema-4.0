@@ -143,32 +143,15 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
-                        var authStateChangedTrigger by remember { mutableStateOf(0) }
-                        var isAuthenticated by remember(authStateChangedTrigger) {
-                            mutableStateOf(
-                                try {
-                                    FirebaseAuth.getInstance().currentUser != null
-                                } catch (e: Exception) {
-                                    android.util.Log.e("MainActivity", "FirebaseAuth currentUser check failed", e)
-                                    false
-                                }
-                            )
-                        }
-
-                        // Also check Guest state
-                        val isGuestUser by viewModel.isGuestUser.collectAsState()
-
                         val isBanned by viewModel.isBanned.collectAsState()
                         if (isBanned) {
                             androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().background(Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) {
                                 androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                                    
-                                    
                                     androidx.compose.foundation.layout.Spacer(modifier = androidx.compose.ui.Modifier.height(16.dp))
                                     androidx.compose.material3.Text("Your account has been suspended", color = Color.White, fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                 }
                             }
-                        } else if (isAuthenticated || isGuestUser) {
+                        } else {
                             MainAppContainer(
                                 viewModel = viewModel,
                                 onLogout = {
@@ -178,15 +161,6 @@ class MainActivity : ComponentActivity() {
                                         android.util.Log.e("MainActivity", "FirebaseAuth signOut failed", e)
                                     }
                                     viewModel.handleLogout()
-                                    authStateChangedTrigger++
-                                }
-                            )
-                        } else {
-                            AuthScreen(
-                                viewModel = viewModel,
-                                onAuthSuccess = {
-                                    viewModel.handleAuthUpdate()
-                                    authStateChangedTrigger++
                                 }
                             )
                         }

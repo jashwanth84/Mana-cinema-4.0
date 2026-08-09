@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -280,11 +283,10 @@ fun MainAppContainer(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            // Hide bottom bar on player layouts and focus states
+            // Hide bottom bar on player layouts and detail screens
             val hideBottomBar = remember(currentNav.screen) {
                 listOf(
-                    Screen.PLAY_MOVIE, Screen.PLAY_SERIES,
-                    Screen.SEARCH, Screen.DETAIL, Screen.SERIES_DETAIL
+                    Screen.PLAY_MOVIE, Screen.PLAY_SERIES, Screen.DETAIL, Screen.SERIES_DETAIL
                 ).contains(currentNav.screen)
             }
 
@@ -664,24 +666,23 @@ fun BottomNavigationBar(
 ) {
     val items = listOf(
         Triple(Screen.HOME, "Home", Icons.Default.Home),
-        Triple(Screen.SERIES, "Series", Icons.Default.PlayArrow),
+        Triple(Screen.SEARCH, "Search", Icons.Default.Search),
         Triple(Screen.DOWNLOADS, "Downloads", Icons.Default.Download),
-        Triple(Screen.WATCHLIST, "My List", Icons.Default.Favorite),
+        Triple(Screen.WATCHLIST, "My List", Icons.Default.BookmarkBorder),
         Triple(Screen.PROFILE, "Profile", Icons.Default.Person)
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0F0F14).copy(alpha = 0.94f)) // Translucent iOS style bottom bar background
+            .background(Color(0xFF0B0B0F).copy(alpha = 0.96f))
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
-        // Thin iOS status separator line
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(0.5.dp)
-                .background(Color(0xFF22222E))
+                .background(Color(0xFF1F1F2B))
         )
         
         Row(
@@ -693,8 +694,8 @@ fun BottomNavigationBar(
         ) {
             items.forEach { (screen, label, icon) ->
                 val isSelected = currentScreen == screen
-                val activeTint = MaterialTheme.colorScheme.primary
-                val inactiveTint = Color(0xFF8E8E93)
+                val activeTint = Color(0xFFE50914)
+                val inactiveTint = Color(0xFFA0A0AB)
                 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -704,7 +705,7 @@ fun BottomNavigationBar(
                         .fillMaxHeight()
                         .clickable(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null, // No clumsy round/bean ripples, true iOS minimal crisp feedback
+                            indication = null,
                             onClick = { onNavigate(screen) }
                         )
                         .padding(vertical = 4.dp)
@@ -729,6 +730,7 @@ fun BottomNavigationBar(
 }
 
 // ------------------ PRIMARY HOMESCREEN ------------------
+// ------------------ PRIMARY HOMESCREEN ------------------
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
@@ -743,351 +745,959 @@ fun HomeScreen(
     val categories by viewModel.categories.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
     val recommendedMovies by viewModel.recommendedMovies.collectAsState()
+    val continueWatching by viewModel.continueWatching.collectAsState()
+    val watchlist by viewModel.watchlist.collectAsState()
     val activeProfile by viewModel.activeProfile.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-
-    var activeMovieIndex by remember { mutableIntStateOf(0) }
-
-    val scale = remember { Animatable(1f) }
-    LaunchedEffect(activeMovieIndex) {
-        scale.snapTo(1.0f)
-        scale.animateTo(
-            targetValue = 1.15f,
-            animationSpec = tween(durationMillis = 5000, easing = LinearEasing)
-        )
-    }
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = isRefreshing,
         onRefresh = { viewModel.refreshData() }
     )
 
-    // Start auto-scroll banner timer
-    LaunchedEffect(movies) {
-        while (movies.isNotEmpty()) {
-            delay(5000)
-            activeMovieIndex = (activeMovieIndex + 1) % movies.take(5).size
-        }
+    // Compute Netflix Rows data
+    val heroItems = remember(movies, webSeries) {
+        movies.take(5)
+    }
+    val trendingMovies = remember(movies) {
+        movies.take(10)
+    }
+    val popularMovies = remember(movies) {
+        movies.sortedByDescending { it.rating.toFloatOrNull() ?: 0f }.take(12)
+    }
+    val newReleases = remember(movies) {
+        val filtered = movies.filter { it.isNew || it.year == "2024" || it.year == "2025" }
+        if (filtered.isNotEmpty()) filtered else movies.take(10)
+    }
+    val topRatedMovies = remember(movies) {
+        movies.filter { (it.rating.toFloatOrNull() ?: 0f) >= 7.5f }.ifEmpty { movies.take(10) }
+    }
+    val teluguMovies = remember(movies) {
+        movies.filter { it.genre.contains("Telugu", ignoreCase = true) || it.category.contains("Telugu", ignoreCase = true) }
+    }
+    val actionMovies = remember(movies) {
+        movies.filter { it.genre.contains("Action", ignoreCase = true) || it.category.contains("Action", ignoreCase = true) }
+    }
+    val comedyMovies = remember(movies) {
+        movies.filter { it.genre.contains("Comedy", ignoreCase = true) || it.category.contains("Comedy", ignoreCase = true) }
     }
 
-    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B0B0F))
+            .pullRefresh(pullRefreshState)
+    ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp)
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Toolbar Top
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row {
-                    Text("MANA ", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                    Text("CINEMA", color = MaterialTheme.colorScheme.primary, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    IconButton(onClick = onSearchClick) {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = Color.White)
-                    }
-                    Box {
-                        IconButton(onClick = onNotificationsClick) {
-                            Icon(imageVector = Icons.Default.Notifications, contentDescription = "Notifications", tint = Color.White)
-                        }
-                        if (notifications.isNotEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .align(Alignment.TopEnd)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Auto-Scroll Hero Banner
-        if (movies.isNotEmpty()) {
-            val heroMovie = movies.getOrNull(activeMovieIndex)
-            if (heroMovie != null) {
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(290.dp)
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .clickable { onNavigateToMovie(heroMovie) },
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            AsyncImage(
-                                model = heroMovie.backdrop.ifEmpty { heroMovie.poster },
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        scaleX = scale.value
-                                        scaleY = scale.value
-                                    }
-                            )
-                            // Warm vertical dark film gradient
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Black.copy(alpha = 0.3f),
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.95f)
-                                            )
-                                        )
-                                    )
-                            )
-                            
-                            // Top Left - FEATURED BADGE
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(16.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(6.dp)
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "FEATURED NOW",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 0.5.sp
-                                )
-                            }
-
-                            // Bottom Content overlay
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomStart)
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.Bottom,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = heroMovie.title,
-                                        color = Color.White,
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier
-                                                .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = heroMovie.rating,
-                                                color = Color.White,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        Text(
-                                            text = "${heroMovie.year} • ${heroMovie.genre.split("/").firstOrNull()?.trim() ?: heroMovie.genre}",
-                                            color = Color.LightGray,
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    
-                                    // Banners indicators
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier.padding(top = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        val totalBanners = movies.take(5).size
-                                        for (i in 0 until totalBanners) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(width = if (i == activeMovieIndex) 16.dp else 6.dp, height = 6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        if (i == activeMovieIndex) MaterialTheme.colorScheme.primary
-                                                        else Color.White.copy(alpha = 0.4f)
-                                                    )
-                                                    .clickable { activeMovieIndex = i }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                // Minimal White Circular Play Button
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White)
-                                        .clickable { onNavigateToMovie(heroMovie) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Play Film",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Trending Sections (Giant Ranks horizontal List)
-        if (movies.isNotEmpty()) {
+            // Sticky Netflix Header
             item {
-                Spacer(modifier = Modifier.height(16.dp))
-                TrendingSection(movies = movies.take(10), onNavigate = onNavigateToMovie)
-            }
-        }
-
-        // Personalized Recommendations Row for Selected Profile
-        if (recommendedMovies.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(18.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (activeProfile?.isKids == true) "Kids Friendly Favorites" else "Recommended for ${activeProfile?.name ?: "You"}",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(recommendedMovies) { movie ->
-                            Card(
-                                modifier = Modifier
-                                    .width(130.dp)
-                                    .height(180.dp)
-                                    .clickable { onNavigateToMovie(movie) }
-                                    .testTag("recommended_movie_${movie.id}"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-                            ) {
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    AsyncImage(
-                                model = movie.poster,
-                                contentDescription = movie.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
-                                if (movie.isNew) {
-                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.qualityBadge.isNotEmpty()) {
-                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.isPremium) {
-                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                                    // Soft Bottom Shade
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
-                                                )
-                                            )
-                                    )
-                                    Text(
-                                        text = movie.title,
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Category Rows
-        items(categories) { categoryName ->
-            val catMovies = movies.filter { it.category.ifBlank { "Movies" } == categoryName }
-            if (catMovies.isNotEmpty()) {
-                CategoryGridRow(
-                    categoryName = categoryName,
-                    movies = catMovies,
-                    onClick = onNavigateToMovie
+                NetflixStickyHeader(
+                    notificationsCount = notifications.size,
+                    avatarUrl = activeProfile?.avatarUrl ?: "",
+                    onSearchClick = onSearchClick,
+                    onNotificationsClick = onNotificationsClick
                 )
             }
+
+            // Hero Banner Carousel
+            if (heroItems.isNotEmpty()) {
+                item {
+                    NetflixHeroSlider(
+                        heroItems = heroItems,
+                        watchlist = watchlist,
+                        onNavigateToMovie = onNavigateToMovie,
+                        onToggleWatchlist = { movie ->
+                            viewModel.toggleWatchlist(
+                                movie.id, movie.title, movie.poster, movie.backdrop, "movie"
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Continue Watching Row
+            if (continueWatching.isNotEmpty()) {
+                item {
+                    ContinueWatchingRow(
+                        items = continueWatching,
+                        movies = movies,
+                        webSeries = webSeries,
+                        onNavigateToMovie = onNavigateToMovie,
+                        onNavigateToSeries = onNavigateToSeries
+                    )
+                }
+            }
+
+            // Top 10 Trending Now
+            if (trendingMovies.isNotEmpty()) {
+                item {
+                    TrendingSection(
+                        movies = trendingMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Recommended for Active Profile
+            if (recommendedMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = if (activeProfile?.isKids == true) "Kids Favorites" else "Recommended for ${activeProfile?.name ?: "You"}",
+                        movies = recommendedMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Popular Movies
+            if (popularMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "Popular Movies",
+                        movies = popularMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // New Releases
+            if (newReleases.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "New Releases",
+                        movies = newReleases,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Top Rated
+            if (topRatedMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "Top Rated",
+                        movies = topRatedMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Telugu Specials
+            if (teluguMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "Telugu Cinema",
+                        movies = teluguMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Action Thrillers
+            if (actionMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "Action & Adventure",
+                        movies = actionMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Web Series Row
+            if (webSeries.isNotEmpty()) {
+                item {
+                    NetflixWebSeriesRow(
+                        title = "Popular Web Series",
+                        seriesList = webSeries,
+                        onNavigate = onNavigateToSeries
+                    )
+                }
+            }
+
+            // Comedy Hits
+            if (comedyMovies.isNotEmpty()) {
+                item {
+                    NetflixPosterRow(
+                        title = "Comedy Hits",
+                        movies = comedyMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
+
+            // Dynamic Categories
+            items(categories) { categoryName ->
+                val catMovies = movies.filter { it.category.ifBlank { "Movies" } == categoryName }
+                if (catMovies.isNotEmpty() && categoryName !in listOf("Movies", "Featured", "Trending")) {
+                    NetflixPosterRow(
+                        title = categoryName,
+                        movies = catMovies,
+                        onNavigate = onNavigateToMovie
+                    )
+                }
+            }
         }
-    }
 
         PullRefreshIndicator(
             refreshing = isRefreshing,
             state = pullRefreshState,
             modifier = Modifier.align(Alignment.TopCenter),
-            backgroundColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary
+            backgroundColor = Color(0xFF1F1F2B),
+            contentColor = Color(0xFFE50914)
         )
+    }
+}
+
+@Composable
+fun NetflixStickyHeader(
+    notificationsCount: Int,
+    avatarUrl: String,
+    onSearchClick: () -> Unit,
+    onNotificationsClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0B0B0F).copy(alpha = 0.98f),
+                        Color(0xFF0B0B0F).copy(alpha = 0.85f),
+                        Color.Transparent
+                    )
+                )
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "MANA ",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "CINEMA",
+                color = Color(0xFFE50914),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            IconButton(
+                onClick = onSearchClick,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Box(contentAlignment = Alignment.TopEnd) {
+                IconButton(
+                    onClick = onNotificationsClick,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Notifications",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                if (notificationsCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE50914))
+                            .offset(x = (-2).dp, y = 4.dp)
+                    )
+                }
+            }
+            if (avatarUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = "Profile Avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFE50914)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Profile",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NetflixHeroSlider(
+    heroItems: List<Movie>,
+    watchlist: List<WatchlistItem>,
+    onNavigateToMovie: (Movie) -> Unit,
+    onToggleWatchlist: (Movie) -> Unit
+) {
+    var activeIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(heroItems) {
+        if (heroItems.isNotEmpty()) {
+            while (true) {
+                delay(4500)
+                activeIndex = (activeIndex + 1) % heroItems.size
+            }
+        }
+    }
+
+    val currentMovie = heroItems.getOrNull(activeIndex) ?: return
+    val isInWatchlist = watchlist.any { it.id == currentMovie.id }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(330.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxSize(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C))
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                var isLoading by remember(currentMovie.id) { mutableStateOf(true) }
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF1A1A24))
+                    )
+                }
+                AsyncImage(
+                    model = currentMovie.backdrop.ifEmpty { currentMovie.poster },
+                    contentDescription = currentMovie.title,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { isLoading = false },
+                    onError = { isLoading = false },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.25f),
+                                    Color.Transparent,
+                                    Color(0xFF0B0B0F).copy(alpha = 0.85f),
+                                    Color(0xFF0B0B0F)
+                                )
+                            )
+                        )
+                )
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(14.dp)
+                        .background(Color(0xFFE50914), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "FEATURED",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        activeIndex = if (activeIndex > 0) activeIndex - 1 else heroItems.size - 1
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 6.dp)
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = "Previous",
+                        tint = Color.White
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        activeIndex = (activeIndex + 1) % heroItems.size
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 6.dp)
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Next",
+                        tint = Color.White
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = currentMovie.title,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!currentMovie.rating.isNullOrBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFB300),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = currentMovie.rating,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Text(
+                            text = "${currentMovie.year} • ${currentMovie.genre.split("/").firstOrNull()?.trim() ?: currentMovie.genre}",
+                            color = Color(0xFFC0C0C8),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (currentMovie.qualityBadge.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .border(0.8.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = currentMovie.qualityBadge,
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (currentMovie.storyline.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = currentMovie.storyline,
+                            color = Color(0xFFA0A0AB),
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { onNavigateToMovie(currentMovie) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Play",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { onToggleWatchlist(currentMovie) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.4f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isInWatchlist) Icons.Default.Check else Icons.Default.Add,
+                                contentDescription = "My List",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isInWatchlist) "In My List" else "My List",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                    ) {
+                        heroItems.indices.forEach { index ->
+                            val isSelected = index == activeIndex
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 3.dp)
+                                    .size(width = if (isSelected) 18.dp else 6.dp, height = 6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) Color(0xFFE50914) else Color.White.copy(alpha = 0.35f))
+                                    .clickable { activeIndex = index }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ContinueWatchingRow(
+    items: List<ContinueWatching>,
+    movies: List<Movie>,
+    webSeries: List<WebSeries>,
+    onNavigateToMovie: (Movie) -> Unit,
+    onNavigateToSeries: (WebSeries) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        NetflixSectionTitle(title = "Continue Watching")
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(items) { cw ->
+                val matchedMovie = movies.find { it.id == cw.contentId }
+                val matchedSeries = webSeries.find { it.id == cw.contentId }
+
+                Column(
+                    modifier = Modifier
+                        .width(160.dp)
+                        .clickable {
+                            if (matchedMovie != null) onNavigateToMovie(matchedMovie)
+                            else if (matchedSeries != null) onNavigateToSeries(matchedSeries)
+                        }
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(95.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF181822))
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AsyncImage(
+                                model = cw.poster,
+                                contentDescription = cw.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.35f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.6f))
+                                        .border(1.dp, Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Resume",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .background(Color.White.copy(alpha = 0.25f))
+                                    .align(Alignment.BottomStart)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(fraction = cw.progress.coerceIn(0.05f, 1f))
+                                        .background(Color(0xFFE50914))
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = cw.title,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NetflixSectionTitle(title: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFFE50914))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun NetflixPosterCard(
+    movie: Movie,
+    onClick: () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "cardScale"
+    )
+
+    Column(
+        modifier = Modifier
+            .width(125.dp)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+    ) {
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+            modifier = Modifier
+                .height(185.dp)
+                .fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C))
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                var isLoading by remember(movie.id) { mutableStateOf(true) }
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF181822),
+                                        Color(0xFF242432),
+                                        Color(0xFF181822)
+                                    )
+                                )
+                            )
+                    )
+                }
+                AsyncImage(
+                    model = movie.poster,
+                    contentDescription = movie.title,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { isLoading = false },
+                    onError = { isLoading = false },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    if (movie.isNew) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFE50914), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (movie.qualityBadge.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (movie.isPremium) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFFFB300), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
+                            )
+                        )
+                )
+
+                if (!movie.rating.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFB300),
+                            modifier = Modifier.size(9.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = movie.rating,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = movie.title,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "${movie.year} • ${movie.genre.split("/").firstOrNull()?.trim() ?: movie.genre}",
+            color = Color(0xFF8E8E9A),
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun NetflixPosterRow(
+    title: String,
+    movies: List<Movie>,
+    onNavigate: (Movie) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        NetflixSectionTitle(title = title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(movies) { movie ->
+                NetflixPosterCard(
+                    movie = movie,
+                    onClick = { onNavigate(movie) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NetflixWebSeriesRow(
+    title: String,
+    seriesList: List<WebSeries>,
+    onNavigate: (WebSeries) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        NetflixSectionTitle(title = title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(seriesList) { series ->
+                Column(
+                    modifier = Modifier
+                        .width(125.dp)
+                        .clickable { onNavigate(series) }
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier
+                            .height(185.dp)
+                            .fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C))
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AsyncImage(
+                                model = series.poster,
+                                contentDescription = series.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (!series.rating.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(6.dp)
+                                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(9.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = series.rating,
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = series.title,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${series.year} • Series",
+                        color = Color(0xFF8E8E9A),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1096,49 +1706,29 @@ fun TrendingSection(
     movies: List<Movie>,
     onNavigate: (Movie) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(18.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Top Trending",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        NetflixSectionTitle(title = "Top 10 Movies Today")
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             itemsIndexed(movies) { index, movie ->
                 Box(
                     modifier = Modifier
-                        .width(160.dp)
+                        .width(165.dp)
                         .height(210.dp)
                         .clickable { onNavigate(movie) }
                 ) {
-                    // Giant rank background text overlapping the poster
                     Text(
                         text = "${index + 1}",
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                        color = Color(0xFFE50914).copy(alpha = 0.45f),
                         fontSize = 110.sp,
                         fontWeight = FontWeight.Black,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .offset(x = (-4).dp, y = 14.dp)
+                            .offset(x = (-6).dp, y = 14.dp)
                     )
                     
-                    // Poster Card aligned on the right
                     Card(
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
@@ -1146,7 +1736,8 @@ fun TrendingSection(
                             .width(125.dp)
                             .height(185.dp)
                             .align(Alignment.TopEnd)
-                            .padding(top = 8.dp, end = 4.dp)
+                            .padding(top = 8.dp, end = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C))
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             AsyncImage(
@@ -1155,24 +1746,6 @@ fun TrendingSection(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
-                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
-                                if (movie.isNew) {
-                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.qualityBadge.isNotEmpty()) {
-                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.isPremium) {
-                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                            // Elegant dark overlay gradient
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1182,20 +1755,19 @@ fun TrendingSection(
                                         )
                                     )
                             )
-                            // Premium Star Rating Pill top-right
                             if (!movie.rating.isNullOrBlank()) {
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
-                                        .padding(8.dp)
-                                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                                        .padding(6.dp)
+                                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = Color(0xFFFFB300),
                                         modifier = Modifier.size(10.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
@@ -1207,8 +1779,6 @@ fun TrendingSection(
                                     )
                                 }
                             }
-                            
-                            // Movie Title overlay at bottom
                             Text(
                                 text = movie.title,
                                 color = Color.White,
@@ -1218,7 +1788,7 @@ fun TrendingSection(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                                    .padding(horizontal = 8.dp, vertical = 8.dp)
                             )
                         }
                     }
@@ -1234,124 +1804,11 @@ fun CategoryGridRow(
     movies: List<Movie>,
     onClick: (Movie) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(18.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = categoryName,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            items(movies) { movie ->
-                Column(
-                    modifier = Modifier
-                        .width(115.dp)
-                        .clickable { onClick(movie) }
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
-                        modifier = Modifier.height(165.dp).fillMaxWidth()
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            AsyncImage(
-                                model = movie.poster,
-                                contentDescription = movie.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Column(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.End) {
-                                if (movie.isNew) {
-                                    Box(modifier = Modifier.background(Color(0xFFE50914), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.qualityBadge.isNotEmpty()) {
-                                    Box(modifier = Modifier.background(Color.Black.copy(alpha=0.7f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text(movie.qualityBadge, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (movie.isPremium) {
-                                    Box(modifier = Modifier.background(Color(0xFFFFB300), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text("PRO", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                            // Subtle gradient overlay at the bottom half to enhance card depth
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f))
-                                        )
-                                    )
-                            )
-                            
-                            // Rating Badge top-right
-                            if (!movie.rating.isNullOrBlank()) {
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(6.dp)
-                                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(9.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text(
-                                        text = movie.rating,
-                                        color = Color.White,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = movie.title,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${movie.year} • ${movie.genre.split("/").firstOrNull()?.trim() ?: movie.genre}",
-                        color = Color.Gray,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+    NetflixPosterRow(
+        title = categoryName,
+        movies = movies,
+        onNavigate = onClick
+    )
 }
 
 // ------------------ SERIES SCREEN ------------------

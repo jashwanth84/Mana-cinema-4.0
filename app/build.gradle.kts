@@ -19,7 +19,7 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-        val firebaseApiKey = project.findProperty("FIREBASE_API_KEY") as? String ?: "AIzaSyAOVmYYxvvxGKl-koWzx7ldYJDaIPM3TR4"
+        val firebaseApiKey = project.findProperty("FIREBASE_API_KEY") as? String ?: "AIzaSyAkpdXxsNTn7u1pHA0PWHeQcB02zGWVOGc"
         buildConfigField("String", "FIREBASE_API_KEY", "\"" + firebaseApiKey + "\"")
     }
 
